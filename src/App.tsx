@@ -14,6 +14,18 @@ import DoodleSnake from './components/DoodleSnake';
 import DoodleMemory from './components/DoodleMemory';
 import { Sparkles, Trophy, BookOpen, User, RotateCcw, Award, Lightbulb, Play, Volume2, VolumeX, Flame, Check, X, ShieldAlert, FileText } from 'lucide-react';
 
+let sharedAudioCtx: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new AudioContextClass();
+  }
+  return sharedAudioCtx;
+}
+
 export default function App() {
   const [player, setPlayer] = useState<Player | null>(null);
   const [activeGame, setActiveGame] = useState<GameType>('NONE');
@@ -149,20 +161,80 @@ export default function App() {
   const playVirtualBeep = (message: string) => {
     if (!soundEnabled) return;
     setVirtualBeep(message);
-    const audioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (audioContext) {
+    const ctx = getSharedAudioContext();
+    if (ctx) {
       try {
-        const ctx = new audioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(440, ctx.currentTime); // A4
-        gain.gain.setValueAtTime(0.04, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.18);
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        const now = ctx.currentTime;
+
+        if (message.includes("Bell") || message.includes("bell") || message.includes("Desk Bell") || message.includes("🛎️")) {
+          // Play a beautiful, detuned, resonant physical desk bell (pure sine + triangle ringing)!
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(987.77, now); // Sweet bell chime A5 (or B5)
+
+          osc2.type = 'triangle';
+          osc2.frequency.setValueAtTime(993, now); // Detuned physical ring vibration
+
+          osc1.connect(gainNode);
+          osc2.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          gainNode.gain.setValueAtTime(0.06, now);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+          osc1.start(now);
+          osc2.start(now);
+          osc1.stop(now + 1.2);
+          osc2.stop(now + 1.2);
+        } else if (message.includes("UPGRADED") || message.includes("Level") || message.includes("🌟")) {
+          // Play a high-fidelity retro victory arpeggio!
+          const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+          notes.forEach((freq, idx) => {
+            const delay = idx * 0.08;
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + delay);
+            osc.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            gainNode.gain.setValueAtTime(0.04, now + delay);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.5);
+            osc.start(now + delay);
+            osc.stop(now + delay + 0.5);
+          });
+        } else if (message.includes("XP") || message.includes("Point") || message.includes("saved") || message.includes("✍️")) {
+          // Play an 8-bit coin sound!
+          const osc = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(987.77, now); // B5
+          osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6
+          osc.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          gainNode.gain.setValueAtTime(0.035, now);
+          gainNode.gain.setValueAtTime(0.035, now + 0.08);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        } else {
+          // Play a pleasant warm doodle chime!
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(523.25, now); // Sweet middle C
+          gain.gain.setValueAtTime(0.03, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+          osc.start();
+          osc.stop(now + 0.18);
+        }
       } catch (e) {
         // Safe play fail
       }
@@ -497,7 +569,7 @@ export default function App() {
           </header>
 
           {/* DYNAMIC MIDDLE ROUTE CONTENT */}
-          <main className="flex-1 py-4 flex flex-col justify-center">
+          <main className={`flex-1 py-4 flex flex-col ${activeGame === 'NONE' ? 'justify-center' : 'justify-start'}`}>
             
             {activeGame === 'NONE' ? (
               

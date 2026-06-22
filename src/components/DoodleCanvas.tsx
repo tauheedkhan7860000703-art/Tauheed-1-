@@ -15,6 +15,30 @@ interface StampItem {
   rotation: number;
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface DrawStroke {
+  points: Point[];
+  color: string;
+  width: number;
+  isEraser: boolean;
+}
+
+let sharedAudioCtx: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new AudioContextClass();
+  }
+  return sharedAudioCtx;
+}
+
 export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppreciationSent }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -22,10 +46,32 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
   const [penColor, setPenColor] = useState<string>('#1e293b'); // Charcoal ink
   const [penWidth, setPenWidth] = useState<number>(3);
   const [activeTool, setActiveTool] = useState<'PENCIL' | 'ERASER' | 'STAMP'>('PENCIL');
+  const [traceTemplate, setTraceTemplate] = useState<string>('NONE');
   
   // Stamp options (perfect for kids and your niece!)
   const [selectedStamp, setSelectedStamp] = useState<string>('🦋');
   const [stamps, setStamps] = useState<StampItem[]>([]);
+
+  // Doodle line memory storage to prevent disappearing on mobile/re-renders
+  const [strokes, setStrokes] = useState<DrawStroke[]>([]);
+  const currentStrokeRef = useRef<Point[]>([]);
+  const activeToolRef = useRef(activeTool);
+  const penColorRef = useRef(penColor);
+  const penWidthRef = useRef(penWidth);
+  const isDrawingRef = useRef(false);
+  const selectedStampRef = useRef(selectedStamp);
+
+  // Sync state parameters to stable refs for touch events
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+    penColorRef.current = penColor;
+    penWidthRef.current = penWidth;
+    selectedStampRef.current = selectedStamp;
+  }, [activeTool, penColor, penWidth, selectedStamp]);
+
+  // Speech Voice section parameters
+  const [synthText, setSynthText] = useState<string>("Hello, Tauheed! Welcome to our ICT computer sandbox console. Ring the bell!");
+  const [selectedVoice, setSelectedVoice] = useState<'ROBOT' | 'TEACHER' | 'KID'>('ROBOT');
 
   // Sound Synth States (for classrooms, demonstrating computer hardware sound-wave generation)
   const [synthWaveform, setSynthWaveform] = useState<OscillatorType>('triangle');
@@ -57,8 +103,12 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
   // Synthesize sound effects using standard AudioContext logic safely
   const triggerCustomSynthSound = (frequency: number, type: OscillatorType = 'triangle', duration = 0.15, sweep = false) => {
     if (!soundEnabled) return;
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioCtx = getSharedAudioContext();
     if (!audioCtx) return;
+
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
 
     try {
       const osc = audioCtx.createOscillator();
@@ -76,7 +126,7 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
         osc.frequency.exponentialRampToValueAtTime(frequency * 2.2, now + duration);
       }
 
-      gainNode.gain.setValueAtTime(0.04, now);
+      gainNode.gain.setValueAtTime(0.08, now);
       gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
       osc.start(now);
@@ -89,8 +139,12 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
   // Fun sound cues built mathematically to impress on ICT classes!
   const playRetroSoundEffect = (fxType: 'BELL' | 'SCRIBBLE' | 'COIN' | 'JUMP' | 'TRIUMPH') => {
     if (!soundEnabled) return;
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioCtx = getSharedAudioContext();
     if (!audioCtx) return;
+
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
 
     try {
       const now = audioCtx.currentTime;
@@ -145,7 +199,7 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
         const gain = audioCtx.createGain();
         osc.type = 'sine';
         osc.frequency.setValueAtTime(987.77, now); // B5 note
-        osc.frequency.setValueByEventAtTime(1318.51, now + 0.08); // E6 note
+        osc.frequency.setValueAtTime(1318.51, now + 0.08); // E6 note
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         gain.gain.setValueAtTime(0.04, now);
@@ -199,7 +253,36 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
 
   // Real-time custom-wave play loop on mouse dragging
   const testInteractiveWave = () => {
-    triggerCustomSynthSound(synthFreq, synthWaveform, 0.2, false);
+    const audioCtx = getSharedAudioContext();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    setBubbleText(`🎛️ Triggered live Oscillator impulse wave of ${synthFreq}Hz [${synthWaveform.toUpperCase()}]!`);
+    triggerCustomSynthSound(synthFreq, synthWaveform, 0.25, false);
+  };
+
+  const redrawAll = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    strokes.forEach((stroke) => {
+      if (stroke.points.length === 0) return;
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.isEraser ? '#ffffff' : stroke.color;
+      ctx.lineWidth = stroke.isEraser ? 30 : stroke.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      for (let i = 1; i < stroke.points.length; i++) {
+        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+      }
+      ctx.stroke();
+    });
   };
 
   // Adjust canvas width relative to actual container wrapper bounds
@@ -220,6 +303,10 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
         ctx.strokeStyle = penColor;
         ctx.lineWidth = penWidth;
       }
+      
+      setTimeout(() => {
+        redrawAll();
+      }, 0);
     }
   };
 
@@ -228,6 +315,10 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
     window.addEventListener('resize', resizeCanvasToContainer);
     return () => window.removeEventListener('resize', resizeCanvasToContainer);
   }, []);
+
+  useEffect(() => {
+    redrawAll();
+  }, [strokes]);
 
   // Set default initial stylus specs
   useEffect(() => {
@@ -261,8 +352,7 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
     }
   };
 
-  const startWriting = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
+  const startWriting = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const pos = getCoordinates(e);
 
     if (activeTool === 'STAMP') {
@@ -293,8 +383,14 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.beginPath();
+      ctx.strokeStyle = activeTool === 'ERASER' ? '#ffffff' : penColor;
+      ctx.lineWidth = activeTool === 'ERASER' ? 30 : penWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       ctx.moveTo(pos.x, pos.y);
       setIsDrawing(true);
+      isDrawingRef.current = true;
+      currentStrokeRef.current = [pos];
       
       // play tiny high frequency scratch sound for feedback
       if (soundEnabled && Math.random() > 0.4) {
@@ -303,15 +399,22 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
     }
   };
 
-  const drawProgress = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || activeTool === 'STAMP') return;
+  const drawProgress = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing && !isDrawingRef.current) return;
+    if (activeTool === 'STAMP') return;
     const pos = getCoordinates(e);
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (ctx) {
+      ctx.strokeStyle = activeTool === 'ERASER' ? '#ffffff' : penColor;
+      ctx.lineWidth = activeTool === 'ERASER' ? 30 : penWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
+
+      currentStrokeRef.current.push(pos);
 
       // Occasional pencil drawing noise loop
       if (soundEnabled && Math.random() > 0.85) {
@@ -321,7 +424,167 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
   };
 
   const endWriting = () => {
-    setIsDrawing(false);
+    if (isDrawing || isDrawingRef.current) {
+      setIsDrawing(false);
+      isDrawingRef.current = false;
+      if (currentStrokeRef.current.length > 0) {
+        const finalStroke: DrawStroke = {
+          points: [...currentStrokeRef.current],
+          color: penColor,
+          width: penWidth,
+          isEraser: activeTool === 'ERASER'
+        };
+        setStrokes(prev => [...prev, finalStroke]);
+      }
+      currentStrokeRef.current = [];
+    }
+  };
+
+  // Synchronized touch handlers to prevent background page scroll while sketching
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      if (!touch) return;
+      const pos = {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      };
+
+      if (activeToolRef.current === 'STAMP') {
+        const scaleRange = 0.8 + Math.random() * 0.4;
+        const angleRange = -20 + Math.random() * 40;
+        const newStamp: StampItem = {
+          id: Date.now().toString() + Math.random().toString(),
+          emoji: selectedStampRef.current,
+          x: pos.x,
+          y: pos.y,
+          scale: scaleRange,
+          rotation: angleRange
+        };
+        setStamps(prev => [...prev, newStamp]);
+
+        const pitches = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88];
+        const pitch = pitches[Math.floor(Math.random() * pitches.length)];
+        triggerCustomSynthSound(pitch, 'sine', 0.12, true);
+        return;
+      }
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.beginPath();
+        ctx.strokeStyle = activeToolRef.current === 'ERASER' ? '#ffffff' : penColorRef.current;
+        ctx.lineWidth = activeToolRef.current === 'ERASER' ? 30 : penWidthRef.current;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.moveTo(pos.x, pos.y);
+        isDrawingRef.current = true;
+        currentStrokeRef.current = [pos];
+
+        if (soundEnabled && Math.random() > 0.4) {
+          triggerCustomSynthSound(400 + Math.random() * 100, 'triangle', 0.05);
+        }
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault();
+      if (!isDrawingRef.current || activeToolRef.current === 'STAMP') return;
+      
+      const rect = canvas.getBoundingClientRect();
+      if (e.touches.length === 0) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const pos = {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      };
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.strokeStyle = activeToolRef.current === 'ERASER' ? '#ffffff' : penColorRef.current;
+        ctx.lineWidth = activeToolRef.current === 'ERASER' ? 30 : penWidthRef.current;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+
+        currentStrokeRef.current.push(pos);
+
+        if (soundEnabled && Math.random() > 0.85) {
+          triggerCustomSynthSound(150 + Math.random() * 100, activeToolRef.current === 'ERASER' ? 'sine' : 'sawtooth', 0.03);
+        }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (isDrawingRef.current) {
+        isDrawingRef.current = false;
+        if (currentStrokeRef.current.length > 0) {
+          const finalStroke: DrawStroke = {
+            points: [...currentStrokeRef.current],
+            color: penColorRef.current,
+            width: penWidthRef.current,
+            isEraser: activeToolRef.current === 'ERASER'
+          };
+          setStrokes(prev => [...prev, finalStroke]);
+        }
+        currentStrokeRef.current = [];
+      }
+    };
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', onTouchEnd, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', onTouchStart);
+      canvas.removeEventListener('touchmove', onTouchMove);
+      canvas.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [soundEnabled]);
+
+  const triggerSpeechVoice = () => {
+    if (!('speechSynthesis' in window)) {
+      setBubbleText("⚠️ Standard Text-to-Speech voice is not supported in this browser format!");
+      return;
+    }
+    
+    try {
+      window.speechSynthesis.cancel();
+      
+      const utterance = new SpeechSynthesisUtterance(synthText);
+      const voices = window.speechSynthesis.getVoices();
+      
+      if (selectedVoice === 'ROBOT') {
+        utterance.rate = 0.8;
+        utterance.pitch = 0.55;
+      } else if (selectedVoice === 'TEACHER') {
+        utterance.rate = 0.95;
+        utterance.pitch = 1.1;
+      } else if (selectedVoice === 'KID') {
+        utterance.rate = 1.25;
+        utterance.pitch = 1.5;
+      } else {
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+      }
+      
+      const engVoice = voices.find(v => v.lang.startsWith('en') || v.name.includes('Google') || v.name.includes('Zira') || v.name.includes('David'));
+      if (engVoice) {
+        utterance.voice = engVoice;
+      }
+      
+      window.speechSynthesis.speak(utterance);
+      setBubbleText(`🗣️ Speaking out loud in [${selectedVoice}] voice: "${synthText}"`);
+      triggerCustomSynthSound(220, 'square', 0.12);
+    } catch (_) {
+      setBubbleText("🔊 Voice synthesis was blocked or suspended by web settings!");
+    }
   };
 
   const handleClearEverything = () => {
@@ -332,6 +595,7 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
     setStamps([]);
+    setStrokes([]);
     setBubbleText("✏️ Sheet wiped clean and pristine! Ready for new ICT ideas!");
     playRetroSoundEffect('SCRIBBLE');
   };
@@ -470,6 +734,30 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
                   />
                 </div>
               )}
+
+              {/* Tracing guide template selection dropdown */}
+              <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-slate-200">
+                <span className="font-mono text-[9.5px] text-pencil-gray font-bold uppercase">🎨 Outline Guide:</span>
+                <select
+                  value={traceTemplate}
+                  onChange={(e) => {
+                    setTraceTemplate(e.target.value);
+                    if (e.target.value !== 'NONE') {
+                      setBubbleText(`Trace guide template [${e.target.value}] loaded! Grab your pencil stylus and trace over the guide outline.`);
+                    } else {
+                      setBubbleText("Trace guide template cleared. Enjoy free-doodle mode!");
+                    }
+                    triggerCustomSynthSound(440, 'sine', 0.1);
+                  }}
+                  className="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer text-slate-800"
+                >
+                  <option value="NONE">✨ Blank Slate</option>
+                  <option value="APPLE">🍎 Apple Chime</option>
+                  <option value="COMPUTER">💻 Desktop PC</option>
+                  <option value="BELL">🛎️ Classroom Bell</option>
+                  <option value="CPU">🎛️ CPU Microchip</option>
+                </select>
+              </div>
             </div>
 
             {/* Stamp selector drawer, visible if stamp is selected */}
@@ -511,6 +799,45 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
             >
               {/* Left double red line margin layout */}
               <div className="absolute left-8 top-0 bottom-0 w-0.5 border-l-2 border-red-300 pointer-events-none opacity-45"></div>
+
+              {/* Tracing outline models */}
+              {traceTemplate === 'APPLE' && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 text-slate-300 opacity-75" viewBox="0 0 600 300" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="6,6">
+                  <path d="M 300,100 C 260,60 210,100 210,140 C 210,210 280,260 300,260 C 320,260 390,210 390,140 C 390,100 340,60 300,100 Z" />
+                  <path d="M 300,100 Q 310,70 325,55 M 300,100 Q 285,80 280,75" />
+                  <text x="300" y="285" textAnchor="middle" className="text-[10px] font-mono fill-slate-400 stroke-none tracking-widest font-extrabold uppercase">🎓 Trace Model: Aman Sir's Apple 🍎</text>
+                </svg>
+              )}
+              
+              {traceTemplate === 'COMPUTER' && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 text-slate-300 opacity-75" viewBox="0 0 600 300" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="6,6">
+                  <rect x="180" y="50" width="240" height="150" rx="10" />
+                  <line x1="180" y1="175" x2="420" y2="175" />
+                  <path d="M 280,200 L 260,240 L 340,240 L 320,200" />
+                  <text x="300" y="285" textAnchor="middle" className="text-[10px] font-mono fill-slate-400 stroke-none tracking-widest font-extrabold uppercase">💻 Trace Model: Personal Computer 💻</text>
+                </svg>
+              )}
+
+              {traceTemplate === 'BELL' && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 text-slate-300 opacity-75" viewBox="0 0 600 300" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="6,6">
+                  <path d="M 210,210 C 210,150 230,100 300,100 C 370,100 390,150 390,210 Z" />
+                  <rect x="190" y="210" width="220" height="20" rx="5" />
+                  <path d="M 290,100 L 290,80 C 290,80 280,80 280,75 C 280,70 320,70 320,75 C 320,80 310,80 310,80 L 310,100" />
+                  <text x="300" y="285" textAnchor="middle" className="text-[10px] font-mono fill-slate-400 stroke-none tracking-widest font-extrabold uppercase">🛎️ Trace Model: Classroom Desk Bell 🛎️</text>
+                </svg>
+              )}
+
+              {traceTemplate === 'CPU' && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 text-slate-300 opacity-75" viewBox="0 0 600 300" fill="none" stroke="currentColor" strokeWidth="2.5" strokeDasharray="6,6">
+                  <rect x="220" y="60" width="160" height="150" rx="8" />
+                  <rect x="250" y="90" width="100" height="90" rx="4" />
+                  <path d="M 190,85 L 220,85 M 190,115 L 220,115 M 190,145 L 220,145 M 190,175 L 220,175" />
+                  <path d="M 380,85 L 410,85 M 380,115 L 410,115 M 380,145 L 410,145 M 380,175 L 410,175" />
+                  <path d="M 245,30 L 245,60 M 275,30 L 275,60 M 305,30 L 305,60 M 335,30 L 335,60" />
+                  <path d="M 245,210 L 245,240 M 275,210 L 275,240 M 305,210 L 305,240 M 335,210 L 335,240" />
+                  <text x="300" y="285" textAnchor="middle" className="text-[10px] font-mono fill-slate-400 stroke-none tracking-widest font-extrabold uppercase">🎛️ Trace Model: Microprocessor Chip 🎛️</text>
+                </svg>
+              )}
 
               {/* Vector Paper Canvas */}
               <canvas
@@ -687,6 +1014,57 @@ export const DoodleCanvas: React.FC<DoodleCanvasProps> = ({ soundEnabled, onAppr
                 <span>Trigger Oscillator Impulse</span>
               </button>
 
+            </div>
+
+            {/* NEW: TEACHER & FRIENDS VOICE SYNTH SECTION */}
+            <div className="space-y-3 pt-3 border-t border-dashed border-slate-200" id="synthesizer-voice-section">
+              <span className="text-[8px] font-mono uppercase text-pencil-gray font-bold block">🗣️ Classroom speech synthesizer (voice section):</span>
+              
+              <div className="space-y-1">
+                <label className="block text-[9px] font-bold text-gray-600 uppercase">1. Voice Character Profile:</label>
+                <div className="grid grid-cols-3 gap-1 text-[9px] font-mono font-bold">
+                  {(['ROBOT', 'TEACHER', 'KID'] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => {
+                        setSelectedVoice(v);
+                        const frequencies = { ROBOT: 220, TEACHER: 523.25, KID: 783.99 };
+                        triggerCustomSynthSound(frequencies[v], 'sine', 0.1);
+                        setBubbleText(`Switched character throat output profile to [${v}]!`);
+                      }}
+                      className={`py-1 rounded text-center border cursor-pointer uppercase transition-all ${
+                        selectedVoice === v 
+                          ? 'bg-ink-blue text-white border-blue-800 scale-105 shadow-xs font-black' 
+                          : 'bg-white text-pencil-gray border-dashed border-gray-300'
+                      }`}
+                    >
+                      {v === 'ROBOT' ? '🤖 Robot' : v === 'TEACHER' ? '👩‍🏫 Instructor' : '🧸 Pupil'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[9px] font-bold text-gray-600 uppercase">2. Words to Speak Aloud:</label>
+                <input
+                  type="text"
+                  value={synthText}
+                  onChange={(e) => setSynthText(e.target.value)}
+                  placeholder="Enter custom words to speak out loud..."
+                  className="w-full text-xs p-2 rounded-xl border border-dashed border-slate-300 focus:outline-none focus:border-ink-blue bg-white font-sans text-ink-dark"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={triggerSpeechVoice}
+                className="w-full py-1.5 bg-highlighter-pink hover:bg-pink-100 text-ink-dark rounded-xl border border-dashed border-pink-400 text-xs font-extrabold cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1"
+                id="btn-voice-synthesize-speak"
+                title="Trigger vocal synthesis loop"
+              >
+                <span>🗣️ Speak Out Aloud</span>
+              </button>
             </div>
 
           </div>
