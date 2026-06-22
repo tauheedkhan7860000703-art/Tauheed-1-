@@ -1,0 +1,183 @@
+@import url('https://fonts.googleapis.com/css2?family=Short+Stack&family=Patrick+Hand&family=Caveat:wght@700&family=Gochi+Hand&family=Just+Another+Hand&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Short Stack", ui-sans-serif, system-ui, sans-serif;
+  --font-hand: "Patrick Hand", "Caveat", "Gochi Hand", cursive;
+  --font-giggle: "Gochi Hand", cursive;
+  --font-mono: "Just Another Hand", monospace;
+  
+  --color-ink-dark: #1e1e2d;
+  --color-ink-blue: #1c3d91;
+  --color-ink-red: #cc2525;
+  --color-paper-cream: #faf7f2;
+  --color-paper-white: #ffffff;
+  --color-pencil-gray: #555562;
+  --color-highlighter-yellow: #fefa8a;
+  --color-highlighter-pink: #ffd2eb;
+  --color-highlighter-green: #cdf7d3;
+  --color-highlighter-blue: #cfe3ff;
+}
+
+@utility paper-grid {
+  background-size: 28px 28px;
+  background-image: 
+    linear-gradient(to right, rgba(28, 61, 145, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(28, 61, 145, 0.035) 1px, transparent 1px);
+}
+
+@utility notebook-margin {
+  border-left: 2px double rgba(204, 37, 37, 0.25);
+  margin-left: 40px;
+  padding-left: 20px;
+}
+
+@utility sketchy-border {
+  border-style: solid;
+  border-width: 2px 3px 3.5px 2.2px;
+  border-color: var(--color-ink-dark);
+  border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+}
+
+@utility sketchy-border-blue {
+  border-style: solid;
+  border-width: 2.2px 3.2px 3px 2.4px;
+  border-color: var(--color-ink-blue);
+  border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+}
+
+@utility sketchy-border-red {
+  border-style: solid;
+  border-width: 2.4px 2.8px 3.5px 2.1px;
+  border-color: var(--color-ink-red);
+  border-radius: 220px 18px 240px 12px/16px 240px 14px 220px;
+}
+
+@utility sketchy-border-sm {
+  border-style: solid;
+  border-width: 2px;
+  border-color: var(--color-ink-dark);
+  border-radius: 120px 10px 90px 10px/10px 90px 10px 120px;
+}
+
+@utility sketchy-border-sm-blue {
+  border-style: solid;
+  border-width: 2px;
+  border-color: var(--color-ink-blue);
+  border-radius: 120px 10px 90px 10px/10px 90px 10px 120px;
+}
+
+@utility sketchy-shadow {
+  box-shadow: 4px 5px 0px 0px var(--color-ink-dark);
+}
+
+@utility sketchy-shadow-blue {
+  box-shadow: 4px 5px 0px 0px var(--color-ink-blue);
+}
+
+@utility sketchy-shadow-red {
+  box-shadow: 4px 5px 0px 0px var(--color-ink-red);
+}
+
+@utility sketchy-shadow-lg {
+  box-shadow: 7px 8px 0px 0px var(--color-ink-dark);
+}
+
+@utility sketchy-shadow-active {
+  box-shadow: 2px 2px 0px 0px var(--color-ink-dark);
+  transform: translate(2px, 3px);
+}
+
+@utility doodle-hover {
+  transition: all 0.2s ease-in-out;
+  &:hover {
+    transform: rotate(-1.5deg) scale(1.02);
+    box-shadow: 6px 7px 0px 0px var(--color-ink-dark);
+  }
+  &:active {
+    transform: translate(2px, 3px);
+    box-shadow: 2px 2px 0px 0px var(--color-ink-dark);
+  }
+}
+
+@utility scribble-highlight {
+  position: relative;
+  z-index: 10;
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: -4px;
+    right: -4px;
+    height: 60%;
+    background: var(--color-highlighter-yellow);
+    z-index: -1;
+    transform: rotate(-1.5deg) skewX(-12deg);
+    border-radius: 4px;
+    opacity: 0.85;
+  }
+}
+
+@utility scribble-highlight-pink {
+  position: relative;
+  z-index: 10;
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: -4px;
+    right: -4px;
+    height: 60%;
+    background: var(--color-highlighter-pink);
+    z-index: -1;
+    transform: rotate(1deg) skewX(-8deg);
+    border-radius: 4px;
+    opacity: 0.85;
+  }
+}
+
+@utility scribble-highlight-green {
+  position: relative;
+  z-index: 10;
+  &::before {
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    left: -4px;
+    right: -4px;
+    height: 60%;
+    background: var(--color-highlighter-green);
+    z-index: -1;
+    transform: rotate(-0.5deg) skewX(-10deg);
+    border-radius: 4px;
+    opacity: 0.85;
+  }
+}
+
+@keyframes float-doodle {
+  0% { transform: translateY(0px) rotate(-1deg); }
+  50% { transform: translateY(-4px) rotate(1.5deg); }
+  100% { transform: translateY(0px) rotate(-1deg); }
+}
+
+@utility animate-float {
+  animation: float-doodle 3s infinite ease-in-out;
+}
+
+@keyframes sketchy-draw {
+  from { stroke-dashoffset: 1000; }
+  to { stroke-dashoffset: 0; }
+}
+
+.draw-path {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: sketchy-draw 2s linear forwards;
+}
+
+/* Notebook binder ring visualizer */
+.notebook-binder {
+  background: linear-gradient(to right, #ccc, #eee 40%, #fff 60%, #ddd 80%, #aaa);
+}
+
+

@@ -1,0 +1,6 @@
+{
+  "name": "Tauheed's Doodle Games",
+  "description": "An incredibly fun, hand-drawn doodle-style game center where you can play multiple addictive mini-games with a friend or against a smart computer. Enter your nickname, select a sketchy avatar, and play for hours!",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
